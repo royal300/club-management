@@ -138,7 +138,7 @@ npm run deploy        # = ./deploy/deploy.sh (defaults: root@93.127.206.52, ~/.s
 [`deploy/deploy.sh`](deploy/deploy.sh) refuses to run with uncommitted changes. It pushes `main` to GitHub, then over SSH the VPS:
 
 1. Pulls that exact commit into `/var/www/club-management-deploy/repo`.
-2. Runs `npm ci` there, but only when `package-lock.json` changed.
+2. Runs an incremental `npm install` there, but only when `package-lock.json` changed. The first run seeds `node_modules` from the live app, because a cold `npm ci` needs more than 1 GB of RAM.
 3. Runs `next build` there. The build reads the server's `.env` through a symlink, so the Server Actions key and `DATABASE_URL` come from the server.
 4. Snapshots the live app to `/var/www/club-management-deploy/previous`, then rsyncs the build into `/var/www/club-management`.
 5. Runs migrations, reloads PM2 and checks `/api/health`.

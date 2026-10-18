@@ -111,9 +111,18 @@ remote_main() {
   cd "$src"
   local lock_hash; lock_hash="$(sha256sum package-lock.json | cut -d' ' -f1)"
   if [[ ! -d node_modules || "$(cat "$root/.lock-hash" 2>/dev/null)" != "$lock_hash" ]]; then
-    log "npm ci (lockfile changed)"
-    capped npm ci --no-audit --no-fund --maxsockets=3 --prefer-offline </dev/null \
-      || die "npm ci failed. Live site untouched."
+    # A from-scratch `npm ci` extracts ~600 packages in parallel and peaks above 1 GB off-heap,
+    # which doesn't fit on this box. Instead, start from the live app's node_modules (on first
+    # run or after a failed install) and let `npm install` fetch only what's missing.
+    if [[ ! -f "$root/.lock-hash" && -d "$app_dir/node_modules" ]]; then
+      log "seeding node_modules from the live app"
+      rm -rf node_modules
+      cp -a "$app_dir/node_modules" node_modules
+    fi
+    rm -f "$root/.lock-hash"
+    log "npm install (incremental, lockfile changed)"
+    capped npm install --no-save --include=dev --no-audit --no-fund --maxsockets=2 </dev/null \
+      || die "npm install failed. Live site untouched."
     echo "$lock_hash" > "$root/.lock-hash"
   else
     ok "dependencies unchanged, skipping npm ci"
