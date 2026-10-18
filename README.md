@@ -94,7 +94,7 @@ No MySQL on your machine? `npm run db:dev` starts a throwaway MySQL 8.4 on port 
 | `UPLOAD_MAX_MB` | Max size per uploaded file (default 5). |
 | `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` | Stable key so Server Action IDs survive restarts (`openssl rand -base64 32`). |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` / `SEED_ADMIN_NAME` | The first admin, created by `npm run db:seed` (password ≥ 10 chars). |
-| `SEED_DEMO_DATA` | `true` loads demo members, events and transactions into an empty database. |
+| `SEED_DEMO_DATA` | `true` loads demo members, events and transactions into an empty database. Keep it `false` in production. |
 
 ### Useful scripts
 
@@ -103,6 +103,7 @@ No MySQL on your machine? `npm run db:dev` starts a throwaway MySQL 8.4 on port 
 | `npm run db:generate` | Create a migration after editing `src/db/schema.ts` |
 | `npm run db:migrate` | Apply pending migrations (safe to run on every deploy) |
 | `npm run db:seed` | Idempotent seed (see above) |
+| `npm run db:clear-demo` | Dry run listing what would be removed; add `-- --yes` to empty members, events, transactions, attachments and numbering (keeps users, settings and lookups) |
 | `npm run test:e2e` | Full Playwright suite against a fresh `club_test` database and the production build |
 | `npm run e2e:live` | Read-only smoke tests against https://club.rasatech.in (set `E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD`) |
 | `npm run typecheck` / `npm run lint` | |
@@ -150,7 +151,7 @@ The script builds locally (the shared VPS has 1 vCPU and no swap), rsyncs the so
    UPLOAD_DIR="/var/lib/club-management/uploads"
    UPLOAD_MAX_MB=5
    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="<openssl rand -base64 32>"
-   SEED_ADMIN_EMAIL=… SEED_ADMIN_PASSWORD=… SEED_ADMIN_NAME=… SEED_DEMO_DATA="true"
+   SEED_ADMIN_EMAIL=… SEED_ADMIN_PASSWORD=… SEED_ADMIN_NAME=… SEED_DEMO_DATA="false"
    ```
 5. **App.** Deploy script as above, then `npm run db:seed` once, then `pm2 save`. `pm2-root` was already enabled at boot.
 6. **Nginx.** First [`club.rasatech.in.http-only.conf`](deploy/nginx/club.rasatech.in.http-only.conf) to serve the ACME challenge, then [`club.rasatech.in.conf`](deploy/nginx/club.rasatech.in.conf) (HTTPS, HTTP→HTTPS redirect, 30 MB uploads). Both live at `/etc/nginx/sites-available/club.rasatech.in` and are symlinked into `sites-enabled`. Reloads only ever happened after `nginx -t` passed.
@@ -162,7 +163,8 @@ The script builds locally (the shared VPS has 1 vCPU and no swap), rsyncs the so
 ```bash
 pm2 logs club-management          # app logs (also /var/www/club-management/logs)
 pm2 reload club-management        # restart without downtime
-cd /var/www/club-management && npm run db:seed   # idempotent; adds demo data only to an empty database
+cd /var/www/club-management && npm run db:seed   # idempotent; adds demo data only if SEED_DEMO_DATA=true and the database is empty
+cd /var/www/club-management && npm run db:clear-demo -- --yes   # remove demo members, events and transactions
 ```
 
 ## Design notes
