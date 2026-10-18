@@ -64,7 +64,7 @@ src/
 drizzle/                     generated SQL migrations
 scripts/                     migrate, seed, local throwaway MySQL
 e2e/                         Playwright specs, fixtures, global setup
-deploy/                      PM2 file, Nginx server block, DB creation SQL, deploy script
+deploy/                      server setup + deploy scripts, PM2 file, Nginx server blocks, DB creation SQL
 assets/fonts/                OFL fonts embedded in PDFs (support ₹)
 ```
 
@@ -128,43 +128,63 @@ Tables: `users`, `sessions`, `login_attempts`, `membership_types`, `members`, `e
 
 ## Deploying to the VPS
 
-**Live:** https://club.rasatech.in. It runs under PM2 (`club-management`) on `127.0.0.1:3105`, behind a **new** Nginx server block, with its own MariaDB database and user. Nothing else on the server was modified.
+The site runs at **https://club.rasatech.in** on the VPS `93.127.206.52`. It is served by PM2 (`club-management`) on `127.0.0.1`, behind its **own** Nginx server block, with its own MariaDB database and user. Nothing else on the server is modified.
+
+The VPS pulls the code from GitHub and builds it. Each deploy clones the branch into a fresh `releases/<timestamp>` folder, then installs, migrates and builds there. Only after that does it switch the `current` symlink and restart PM2. The live site keeps running the previous release while a deploy is building or if it fails, and a release that fails `/api/health` is rolled back automatically.
+
+```
+/var/www/club-management/
+  current -> releases/20261018-125156   what PM2 runs
+  releases/                             the last 2 builds (KEEP_RELEASES)
+  shared/.env                           secrets, mode 600, linked into every release
+  shared/logs/                          PM2 logs
+/var/lib/club-management/uploads        bills and proofs (outside any web root)
+```
+
+### First-time setup
+
+1. **DNS.** At the DNS provider for `rasatech.in`, add `A  club  93.127.206.52` (TTL 1 hour).
+2. **On the VPS, as root:**
+   ```bash
+   git clone --depth 1 https://github.com/royal300/club-management.git /tmp/club-setup
+   bash /tmp/club-setup/deploy/setup-server.sh
+   ```
+   It asks for the MariaDB `root` password (used once and never stored) and the first admin's email. Then it:
+   - creates the `club_management` database and the `club_app` user, with a random password and rights on that database only, after checking that neither is already in use;
+   - writes `shared/.env` with fresh secrets and picks a free port, 3105 or the next one up;
+   - adds the Nginx block for the domain, removing it again if `nginx -t` fails;
+   - runs the first deploy and seeds settings, lookups and the admin (no demo data);
+   - gets a Let's Encrypt certificate (`certbot certonly --webroot`, so certbot never edits Nginx files) and turns on HTTPS.
+
+   The admin password is printed once at the end. Change it under **Account** after signing in.
+
+   If DNS isn't live yet, the site comes up over HTTP only. Re-run the script once `club.rasatech.in` resolves to get HTTPS; sign-in needs HTTPS because session cookies are `Secure`. Re-running is always safe, because existing pieces are kept.
+
+   Options (env): `BRANCH`, `DOMAIN`, `DB_NAME`, `DB_USER`, `DB_HOST`, `DB_PORT`, `ADMIN_EMAIL`, `ADMIN_NAME`, `LETSENCRYPT_EMAIL`.
 
 ### Routine updates
 
+Push to `main`, then either run this on the VPS:
 ```bash
-DEPLOY_HOST=root@93.127.206.52 SSH_KEY=~/.ssh/club_deploy npm run deploy
+bash /var/www/club-management/current/deploy/deploy.sh                  # deploys main
+BRANCH=some-branch bash /var/www/club-management/current/deploy/deploy.sh
 ```
+or run this from your computer: `DEPLOY_HOST=root@93.127.206.52 ./deploy/deploy.sh` (add `SSH_KEY=~/.ssh/key` for key auth).
 
-The script builds locally (the shared VPS has 1 vCPU and no swap), rsyncs the source and `.next`, runs `npm ci --omit=dev`, applies migrations, reloads PM2 and checks `/api/health`. It reads `SERVER_ACTIONS_KEY` from `deploy/.secrets.local`, which must equal `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` in the server's `.env`.
-
-### What the first deploy set up (for reference or a rebuild)
-
-1. **DNS.** `club.rasatech.in A 93.127.206.52`.
-2. **Database.** [`deploy/create-database.sql`](deploy/create-database.sql) was run as the MariaDB admin. It creates only `club_management` and `club_app@localhost` / `club_app@127.0.0.1`, with privileges on that database alone.
-3. **Folders.** `/var/www/club-management` (app and `.env`, mode 600) and `/var/lib/club-management/uploads` (bills and proofs, outside any web root, mode 750).
-4. **`.env` on the server:**
-   ```
-   DATABASE_URL="mysql://club_app:<password>@127.0.0.1:3306/club_management"
-   APP_URL="https://club.rasatech.in"
-   APP_PORT=3105
-   UPLOAD_DIR="/var/lib/club-management/uploads"
-   UPLOAD_MAX_MB=5
-   NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="<openssl rand -base64 32>"
-   SEED_ADMIN_EMAIL=… SEED_ADMIN_PASSWORD=… SEED_ADMIN_NAME=… SEED_DEMO_DATA="false"
-   ```
-5. **App.** Deploy script as above, then `npm run db:seed` once, then `pm2 save`. `pm2-root` was already enabled at boot.
-6. **Nginx.** First [`club.rasatech.in.http-only.conf`](deploy/nginx/club.rasatech.in.http-only.conf) to serve the ACME challenge, then [`club.rasatech.in.conf`](deploy/nginx/club.rasatech.in.conf) (HTTPS, HTTP→HTTPS redirect, 30 MB uploads). Both live at `/etc/nginx/sites-available/club.rasatech.in` and are symlinked into `sites-enabled`. Reloads only ever happened after `nginx -t` passed.
-7. **Certificate.** `certbot certonly --webroot -w /var/www/letsencrypt -d club.rasatech.in`, so certbot never edits Nginx files. The renewal config has `renew_hook = systemctl reload nginx`, and the system `certbot.timer` renews it.
-8. **Verify.** `curl https://club.rasatech.in/api/health`, then `E2E_ADMIN_EMAIL=… E2E_ADMIN_PASSWORD=… npm run e2e:live`.
+The build runs on the VPS. If it is killed for lack of memory (exit 137), the live site is unaffected: add swap or free memory, then deploy again.
 
 ### Useful on the server
 
 ```bash
-pm2 logs club-management          # app logs (also /var/www/club-management/logs)
-pm2 reload club-management        # restart without downtime
-cd /var/www/club-management && npm run db:seed   # idempotent; adds demo data only if SEED_DEMO_DATA=true and the database is empty
-cd /var/www/club-management && npm run db:clear-demo -- --yes   # remove demo members, events and transactions
+pm2 logs club-management                                    # app logs (also shared/logs)
+pm2 restart club-management
+cd /var/www/club-management/current && npm run db:clear-demo   # dry run; add -- --yes to delete demo data
+ls /var/www/club-management/releases                        # previous build kept for rollback
+```
+
+To roll back by hand, point `current` at the previous release and restart:
+```bash
+ln -sfn /var/www/club-management/releases/<older> /var/www/club-management/current && pm2 restart club-management
 ```
 
 ## Design notes
