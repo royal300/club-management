@@ -18,7 +18,8 @@
 # The live app is only changed after a successful build. If migrate, reload or the health
 # check fails, the previous release is restored automatically. Migrations are not reverted.
 #
-# Env overrides: DEPLOY_HOST, SSH_KEY, DEPLOY_BRANCH, NO_PUSH=1, BUILD_MEMORY_MAX (e.g. 1200M).
+# Env overrides: DEPLOY_HOST, SSH_KEY, DEPLOY_BRANCH, NO_PUSH=1, BUILD_MEMORY_MAX (e.g. 1200M),
+# BUILD_HEAP_MB (V8 heap for npm ci / next build, default 640).
 set -euo pipefail
 
 APP_NAME="club-management"
@@ -63,7 +64,7 @@ local_main() {
   # The script is sent over stdin and runs from a function, so commands on the server can't
   # consume the rest of it.
   ssh "${ssh_opts[@]}" "$host" \
-    "BUILD_MEMORY_MAX='${BUILD_MEMORY_MAX:-}' bash -s -- --remote '$BRANCH' '$local_sha'" < "$0"
+    "BUILD_MEMORY_MAX='${BUILD_MEMORY_MAX:-}' BUILD_HEAP_MB='${BUILD_HEAP_MB:-}' bash -s -- --remote '$BRANCH' '$local_sha'" < "$0"
 }
 
 # -------------------------------------------------------------------------- remote side
@@ -73,6 +74,8 @@ remote_main() {
   local root="/var/www/$APP_NAME-deploy"
   local src="$root/repo" prev="$root/previous"
   local mem_max="${BUILD_MEMORY_MAX:-1000M}"
+  # A smaller V8 heap makes Node collect garbage harder instead of growing into the cgroup cap.
+  local heap_mb="${BUILD_HEAP_MB:-640}"
 
   [[ -f "$app_dir/.env" ]] || die "Missing $app_dir/.env. Create it first (see README)."
   mkdir -p "$root" "$app_dir/logs"
@@ -99,9 +102,9 @@ remote_main() {
   capped() {
     if [[ $EUID -eq 0 ]] && command -v systemd-run >/dev/null; then
       systemd-run --scope --quiet --collect -p MemoryMax="$mem_max" -p MemorySwapMax=0 \
-        nice -n 10 "$@"
+        nice -n 10 env NODE_OPTIONS="--max-old-space-size=$heap_mb" "$@"
     else
-      nice -n 10 "$@"
+      nice -n 10 env NODE_OPTIONS="--max-old-space-size=$heap_mb" "$@"
     fi
   }
 
@@ -109,7 +112,8 @@ remote_main() {
   local lock_hash; lock_hash="$(sha256sum package-lock.json | cut -d' ' -f1)"
   if [[ ! -d node_modules || "$(cat "$root/.lock-hash" 2>/dev/null)" != "$lock_hash" ]]; then
     log "npm ci (lockfile changed)"
-    capped npm ci --no-audit --no-fund </dev/null || die "npm ci failed. Live site untouched."
+    capped npm ci --no-audit --no-fund --maxsockets=3 --prefer-offline </dev/null \
+      || die "npm ci failed. Live site untouched."
     echo "$lock_hash" > "$root/.lock-hash"
   else
     ok "dependencies unchanged, skipping npm ci"
