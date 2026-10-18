@@ -1,26 +1,285 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-geist-sans);
+  --font-display: var(--font-fraunces);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Club identity */
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-felt: var(--felt);
+  --color-felt-deep: var(--felt-deep);
+  --color-brass: var(--brass);
+  --color-brass-soft: var(--brass-soft);
+  --color-stamp: var(--stamp);
+  --color-income: var(--income);
+  --color-expense: var(--expense);
+  --color-pending: var(--pending);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-expo: cubic-bezier(0.87, 0, 0.13, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Fixed brand colours — the same in both themes (used by the landing page and PDFs). */
+:root {
+  --paper: #f4efe4;
+  --ink: #16201b;
+  --felt: #0f3d2f;
+  --felt-deep: #0a2a20;
+  --brass: #c3912f;
+  --brass-soft: #ecd49b;
+  --stamp: #c4512b;
+}
+
+/* Inside the app: a calm ledger page. */
+:root {
+  --background: #f4efe4;
+  --foreground: #16201b;
+  --card: #fbf8f1;
+  --card-foreground: #16201b;
+  --popover: #fffdf8;
+  --popover-foreground: #16201b;
+  --primary: #0f3d2f;
+  --primary-foreground: #f7f1e3;
+  --secondary: #e9e1cf;
+  --secondary-foreground: #16201b;
+  --muted: #ece5d5;
+  --muted-foreground: #5b675f;
+  --accent: #efe3c4;
+  --accent-foreground: #3a2b0c;
+  --destructive: #b8401f;
+  --border: #ddd3bf;
+  --input: #d3c8b0;
+  --ring: #c3912f;
+  --income: #1d7350;
+  --expense: #c04a25;
+  --pending: #b07a12;
+  /* validated for CVD separation against the card surface (dataviz validator) */
+  --chart-1: #008f66;
+  --chart-2: #cf5f2a;
+  --chart-3: #c3912f;
+  --chart-4: #3f6b8f;
+  --chart-5: #7a5c99;
+  --radius: 0.7rem;
+  --sidebar: #ece4d2;
+  --sidebar-foreground: #16201b;
+  --sidebar-primary: #0f3d2f;
+  --sidebar-primary-foreground: #f7f1e3;
+  --sidebar-accent: #e1d6bd;
+  --sidebar-accent-foreground: #16201b;
+  --sidebar-border: #d8ccb2;
+  --sidebar-ring: #c3912f;
+}
+
+/* Night at the club. */
+.dark {
+  --background: #0c1411;
+  --foreground: #ece5d4;
+  --card: #121c18;
+  --card-foreground: #ece5d4;
+  --popover: #15211c;
+  --popover-foreground: #ece5d4;
+  --primary: #d9ad52;
+  --primary-foreground: #121a12;
+  --secondary: #1b2722;
+  --secondary-foreground: #ece5d4;
+  --muted: #18231e;
+  --muted-foreground: #99a69e;
+  --accent: #2a2a1b;
+  --accent-foreground: #f1dca6;
+  --destructive: #e3734e;
+  --border: rgb(236 229 212 / 0.1);
+  --input: rgb(236 229 212 / 0.16);
+  --ring: #d9ad52;
+  --income: #55c08f;
+  --expense: #ec7b57;
+  --pending: #e2b04a;
+  --chart-1: #13a06e;
+  --chart-2: #e4653a;
+  --chart-3: #d9ad52;
+  --chart-4: #7aa7cf;
+  --chart-5: #b195d6;
+  --sidebar: #0f1915;
+  --sidebar-foreground: #ece5d4;
+  --sidebar-primary: #d9ad52;
+  --sidebar-primary-foreground: #121a12;
+  --sidebar-accent: #1b2722;
+  --sidebar-accent-foreground: #ece5d4;
+  --sidebar-border: rgb(236 229 212 / 0.08);
+  --sidebar-ring: #d9ad52;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "cv11";
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--brass) 45%, transparent);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .font-display {
+    font-family: var(--font-fraunces), ui-serif, Georgia, serif;
+    font-optical-sizing: auto;
+    font-variation-settings: "WONK" 0;
+  }
+  .font-display-wonk {
+    font-family: var(--font-fraunces), ui-serif, Georgia, serif;
+    font-optical-sizing: auto;
+    font-variation-settings: "WONK" 1;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Faint paper grain — a static, cached SVG noise tile. */
+  .paper-grain {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.09 0 0 0 0 0.12 0 0 0 0 0.1 0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+  .ledger-lines {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 27px,
+      color-mix(in oklab, var(--border) 85%, transparent) 27px,
+      color-mix(in oklab, var(--border) 85%, transparent) 28px
+    );
+  }
+  .ledger-margin {
+    box-shadow: inset 3.25rem 0 0 -3.15rem color-mix(in oklab, var(--stamp) 45%, transparent);
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+  .zigzag-bottom {
+    --zz: 10px;
+    mask:
+      conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / calc(var(--zz) * 2) 100%;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Lenis smooth scroll (landing only). */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* The intro only exists for first-time visitors with JS — decided before first paint.
+   If the app bundle never boots, a CSS failsafe lifts the curtain after 8s. */
+#club-intro {
+  display: none;
+}
+html[data-intro="play"] #club-intro {
+  display: block;
+  animation: intro-failsafe 0.4s linear 8s forwards;
+}
+@keyframes intro-failsafe {
+  to {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+/* Hero letters wait below their line until the curtain lifts (JS + motion only). */
+@media (prefers-reduced-motion: no-preference) {
+  .js .hero-char {
+    transform: translateY(115%);
+    /* Failsafe: if the app bundle never boots, the headline still rises after 10s. */
+    animation: hero-failsafe 0.6s cubic-bezier(0.22, 1, 0.36, 1) 10s forwards;
+  }
+}
+@keyframes hero-failsafe {
+  to {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  #club-intro {
+    display: none;
+  }
 }

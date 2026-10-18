@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local data
+/.data/
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/e2e/.auth/
+
+!.env.example
+/test-results/
+/playwright-report/
+
+# deployment secrets (never commit)
+/deploy/.secrets.local
