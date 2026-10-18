@@ -13,13 +13,15 @@
 #   /var/www/club-management-deploy/repo  git checkout where npm ci + next build run
 #   /var/www/club-management-deploy/previous  hard-link snapshot of the last good release
 #
-# The VPS is shared (1 vCPU, no swap), so the build runs in a memory-capped cgroup.
-# If it runs out of memory, only the build is killed, not other services.
+# The VPS is shared (1 vCPU, ~1 GB free RAM, no swap). The build gets at most 1 GB of RAM in its
+# own cgroup, plus a temporary swap file that is deleted afterwards. If it still runs out,
+# only the build is killed, not other services.
 # The live app is only changed after a successful build. If migrate, reload or the health
 # check fails, the previous release is restored automatically. Migrations are not reverted.
 #
-# Env overrides: DEPLOY_HOST, SSH_KEY, DEPLOY_BRANCH, NO_PUSH=1, BUILD_MEMORY_MAX (e.g. 1200M),
-# BUILD_HEAP_MB (V8 heap for npm ci / next build, default 640).
+# Env overrides: DEPLOY_HOST, SSH_KEY, DEPLOY_BRANCH, NO_PUSH=1, BUILD_MEMORY_MAX (RAM cap,
+# default 1000M), BUILD_SWAP (temporary swap for the build, default 3G, 0 = none),
+# BUILD_HEAP_MB (V8 heap, default 1536).
 set -euo pipefail
 
 APP_NAME="club-management"
@@ -64,7 +66,31 @@ local_main() {
   # The script is sent over stdin and runs from a function, so commands on the server can't
   # consume the rest of it.
   ssh "${ssh_opts[@]}" "$host" \
-    "BUILD_MEMORY_MAX='${BUILD_MEMORY_MAX:-}' BUILD_HEAP_MB='${BUILD_HEAP_MB:-}' bash -s -- --remote '$BRANCH' '$local_sha'" < "$0"
+    "BUILD_MEMORY_MAX='${BUILD_MEMORY_MAX:-}' BUILD_HEAP_MB='${BUILD_HEAP_MB:-}' BUILD_SWAP='${BUILD_SWAP:-}' bash -s -- --remote '$BRANCH' '$local_sha'" < "$0"
+}
+
+# Temporary swap that exists only while the build runs. It isn't in /etc/fstab, and it's
+# removed on exit (success, failure or Ctrl-C).
+SWAP_FILE=""
+enable_build_swap() {
+  local size="$1"
+  [[ $EUID -eq 0 && "$size" != "0" ]] || return 1
+  disable_build_swap                                    # clear a leftover from a crashed run
+  log "enabling temporary $size swap at $SWAP_FILE"
+  fallocate -l "$size" "$SWAP_FILE" 2>/dev/null \
+    || dd if=/dev/zero of="$SWAP_FILE" bs=1M count="$(numfmt --from=iec "$size" | awk '{print int($1/1048576)}')" status=none
+  chmod 600 "$SWAP_FILE"
+  mkswap "$SWAP_FILE" >/dev/null && swapon "$SWAP_FILE" && return 0
+  rm -f "$SWAP_FILE"
+  echo "could not enable swap; building without it" >&2
+  return 1
+}
+disable_build_swap() {
+  [[ -n "$SWAP_FILE" ]] || return 0
+  if grep -q "^$SWAP_FILE " /proc/swaps 2>/dev/null; then
+    swapoff "$SWAP_FILE" && log "temporary swap removed"
+  fi
+  rm -f "$SWAP_FILE"
 }
 
 # -------------------------------------------------------------------------- remote side
@@ -74,8 +100,9 @@ remote_main() {
   local root="/var/www/$APP_NAME-deploy"
   local src="$root/repo" prev="$root/previous"
   local mem_max="${BUILD_MEMORY_MAX:-1000M}"
-  # A smaller V8 heap makes Node collect garbage harder instead of growing into the cgroup cap.
-  local heap_mb="${BUILD_HEAP_MB:-640}"
+  local heap_mb="${BUILD_HEAP_MB:-1536}"
+  local swap_size="${BUILD_SWAP:-3G}"
+  SWAP_FILE="$root/build.swap"
 
   [[ -f "$app_dir/.env" ]] || die "Missing $app_dir/.env. Create it first (see README)."
   mkdir -p "$root" "$app_dir/logs"
@@ -98,15 +125,21 @@ remote_main() {
   # The build reads DATABASE_URL (prerender), APP_URL and the Server Actions key from .env.
   ln -sfn "$app_dir/.env" "$src/.env"
 
-  # 2. Install + build (memory-capped, low priority) ----------------------------------------
+  # 2. Install + build (RAM-capped, low priority) --------------------------------------------
+  # RAM is capped at $mem_max. Anything above that goes to the temporary swap file, so the
+  # build only pages out its own memory and never squeezes the other apps on the box.
   capped() {
     if [[ $EUID -eq 0 ]] && command -v systemd-run >/dev/null; then
-      systemd-run --scope --quiet --collect -p MemoryMax="$mem_max" -p MemorySwapMax=0 \
+      systemd-run --scope --quiet --collect -p MemoryMax="$mem_max" -p MemorySwapMax="$swap_max" \
         nice -n 10 env NODE_OPTIONS="--max-old-space-size=$heap_mb" "$@"
     else
       nice -n 10 env NODE_OPTIONS="--max-old-space-size=$heap_mb" "$@"
     fi
   }
+
+  local swap_max=0
+  trap disable_build_swap EXIT
+  if enable_build_swap "$swap_size"; then swap_max="$swap_size"; fi
 
   cd "$src"
   local lock_hash; lock_hash="$(sha256sum package-lock.json | cut -d' ' -f1)"
@@ -128,11 +161,12 @@ remote_main() {
     ok "dependencies unchanged, skipping npm ci"
   fi
 
-  log "next build (memory cap $mem_max). This takes a few minutes on 1 vCPU."
+  log "next build (RAM cap $mem_max, swap $swap_max). This takes several minutes on 1 vCPU."
   local started=$SECONDS
   NEXT_TELEMETRY_DISABLED=1 capped npx --no-install next build </dev/null \
-    || die "Build failed (if it was killed, raise BUILD_MEMORY_MAX). Live site untouched."
+    || die "Build failed (if it was killed, raise BUILD_SWAP or BUILD_MEMORY_MAX). Live site untouched."
   ok "built in $((SECONDS - started))s"
+  disable_build_swap
 
   # 3. Release -----------------------------------------------------------------------
   log "snapshotting current release"

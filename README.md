@@ -143,7 +143,7 @@ npm run deploy        # = ./deploy/deploy.sh (defaults: root@93.127.206.52, ~/.s
 4. Snapshots the live app to `/var/www/club-management-deploy/previous`, then rsyncs the build into `/var/www/club-management`.
 5. Runs migrations, reloads PM2 and checks `/api/health`.
 
-The VPS is shared (1 vCPU, no swap), so steps 2 and 3 run in a memory-capped cgroup (`BUILD_MEMORY_MAX`, default `1000M`) at low priority. If the build fails, the live site is untouched. If migrate, reload or the health check fails, the previous release is restored automatically.
+The VPS is shared (1 vCPU, ~1 GB free RAM, no swap), and a Next.js 16 build needs more than that. Steps 2 and 3 therefore run in their own cgroup, capped at `BUILD_MEMORY_MAX` (default `1000M`) of RAM, at low priority. A temporary swap file (`BUILD_SWAP`, default `3G`, at `/var/www/club-management-deploy/build.swap`) is turned on just for the build and deleted afterwards. It is never added to `/etc/fstab`, and only the build's own memory pages out to it. If the build fails, the live site is untouched. If migrate, reload or the health check fails, the previous release is restored automatically.
 
 To deploy from the server itself: `bash /var/www/club-management-deploy/repo/deploy/deploy.sh --remote`.
 
