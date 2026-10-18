@@ -129,13 +129,23 @@ Tables: `users`, `sessions`, `login_attempts`, `membership_types`, `members`, `e
 
 **Live:** https://club.rasatech.in. It runs under PM2 (`club-management`) on `127.0.0.1:3105`, behind a **new** Nginx server block, with its own MariaDB database and user. Nothing else on the server was modified.
 
-### Routine updates
+### Routine updates (via GitHub)
 
 ```bash
-DEPLOY_HOST=root@93.127.206.52 SSH_KEY=~/.ssh/club_deploy npm run deploy
+npm run deploy        # = ./deploy/deploy.sh (defaults: root@93.127.206.52, ~/.ssh/club_deploy)
 ```
 
-The script builds locally (the shared VPS has 1 vCPU and no swap), rsyncs the source and `.next`, runs `npm ci --omit=dev`, applies migrations, reloads PM2 and checks `/api/health`. It reads `SERVER_ACTIONS_KEY` from `deploy/.secrets.local`, which must equal `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` in the server's `.env`.
+[`deploy/deploy.sh`](deploy/deploy.sh) refuses to run with uncommitted changes. It pushes `main` to GitHub, then over SSH the VPS:
+
+1. Pulls that exact commit into `/var/www/club-management-deploy/repo`.
+2. Runs `npm ci` there, but only when `package-lock.json` changed.
+3. Runs `next build` there. The build reads the server's `.env` through a symlink, so the Server Actions key and `DATABASE_URL` come from the server.
+4. Snapshots the live app to `/var/www/club-management-deploy/previous`, then rsyncs the build into `/var/www/club-management`.
+5. Runs migrations, reloads PM2 and checks `/api/health`.
+
+The VPS is shared (1 vCPU, no swap), so steps 2 and 3 run in a memory-capped cgroup (`BUILD_MEMORY_MAX`, default `1000M`) at low priority. If the build fails, the live site is untouched. If migrate, reload or the health check fails, the previous release is restored automatically.
+
+To deploy from the server itself: `bash /var/www/club-management-deploy/repo/deploy/deploy.sh --remote`.
 
 ### What the first deploy set up (for reference or a rebuild)
 
